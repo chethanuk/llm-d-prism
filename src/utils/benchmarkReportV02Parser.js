@@ -21,7 +21,7 @@
 import yaml from 'js-yaml';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { createEntry, normalizeModelName, normalizeHardware } from './dataParser.js';
+import { createEntry, normalizeModelName, normalizeHardware, extractAcceleratorCount } from './dataParser.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -792,7 +792,7 @@ export function parseReportV02(yamlText, filename) {
     const scenario = {
         model: modelVal,
         hardware: accelVal,
-        acceleratorCount: accel.count ?? null,
+        acceleratorCount: accel.count ?? (extractAcceleratorCount(accelVal) > 1 ? extractAcceleratorCount(accelVal) : null),
         tp: parallelism.tp ?? null,
         role: std.role || 'aggregate',
         inferenceTool: inferenceToolVal,
@@ -1434,7 +1434,10 @@ export function stageToEntry(stage) {
         stage.payload?.hardware?.accelerator_count,
         stage.bundle?.payload?.hardware?.accelerator_count,
         stage.metadata?.accelerator_count,
-        scenario.acceleratorCount
+        scenario.acceleratorCount,
+        extractAcceleratorCount(scenario.hardware),
+        extractAcceleratorCount(effectiveHardwareName),
+        extractAcceleratorCount(hardware)
     ];
     for (const c of explicitCountCandidates) {
         if (typeof c === 'number' && c > 1) {
@@ -1651,6 +1654,13 @@ export function mutateRawReportMetadata(rawReport, {
     if (tags !== undefined && tags !== null) {
         if (!newReport.run) newReport.run = {};
         newReport.run.keywords = normalizeTags(tags);
+    }
+
+    if (model_name || hardware_name || (accelerator_count !== undefined && accelerator_count !== null)) {
+        if (!newReport.scenario) newReport.scenario = {};
+        if (!Array.isArray(newReport.scenario.stack) || newReport.scenario.stack.length === 0) {
+            newReport.scenario.stack = [{ standardized: {} }];
+        }
     }
 
     // 2. Update model name in scenario.stack and load.native
